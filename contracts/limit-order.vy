@@ -63,7 +63,7 @@ event Deposited:
     lower_sqrt_price_x96: uint256
     deadline: uint256
 
-event Withdraw:
+event Withdrawn:
     token_id: indexed(uint256)
     withdrawer: indexed(address)
     recipient: indexed(address)
@@ -130,7 +130,7 @@ def _withdraw(tokenId: uint256, recipient: address, liquidity: uint128):
     ERC20(USDC).transfer(recipient, amount0)
     WrappedEth(WETH).withdraw(amount1)
     send(recipient, amount1)
-    log Withdraw(tokenId, msg.sender, recipient, amount0, amount1)
+    log Withdrawn(tokenId, msg.sender, recipient, amount0, amount1)
 
 @external
 @nonreentrant("lock")
