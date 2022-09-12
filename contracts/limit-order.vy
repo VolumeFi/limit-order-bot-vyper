@@ -60,6 +60,8 @@ event Deposited:
     amount: uint256
     lower_tick: int24
     upper_tick: int24
+    lower_sqrt_price_x96: uint256
+    deadline: uint256
 
 event Withdraw:
     token_id: indexed(uint256)
@@ -72,7 +74,7 @@ depositors: public(HashMap[uint256, Deposit])
 
 @external
 @payable
-def deposit(lower_tick: int24, upper_tick: int24, deadline: uint256):
+def deposit(lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24, deadline: uint256):
     assert msg.value > 0, "Zero Value"
     WrappedEth(WETH).deposit(value=msg.value)
     ERC20(WETH).approve(NONFUNGIBLE_POSITION_MANAGER, msg.value)
@@ -99,7 +101,7 @@ def deposit(lower_tick: int24, upper_tick: int24, deadline: uint256):
         depositor: msg.sender,
         deadline: deadline
     })
-    log Deposited(tokenId, msg.sender, msg.value, lower_tick, upper_tick)
+    log Deposited(tokenId, msg.sender, msg.value, lower_tick, upper_tick, lower_sqrt_price_x96, deadline)
 
 @internal
 def _withdraw(tokenId: uint256, recipient: address, liquidity: uint128):
