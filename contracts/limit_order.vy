@@ -51,8 +51,8 @@ USDC: constant(address) = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 # USDC
 WETH: constant(address) = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 # WETH
 FEE_LEVEL: constant(uint24) = 500
 POOL: constant(address) = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 # USDC-WETH-500
-MAX_SIZE: constant(uint256) = 100
-ERROR: constant(int24) = 100
+MAX_SIZE: constant(uint256) = 127
+ERROR: constant(int24) = 100 # 1%
 
 event Deposited:
     token_id: indexed(uint256)
