@@ -91,7 +91,7 @@ def deposit(lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24,
         amount0Desired: 0,
         amount1Desired: msg.value,
         amount0Min: 0,
-        amount1Min: msg.value,
+        amount1Min: 1,
         recipient: self,
         deadline: block.timestamp
     }))
@@ -127,9 +127,11 @@ def _withdraw(tokenId: uint256, recipient: address, liquidity: uint128):
         depositor: empty(address),
         deadline: 0
     })
-    ERC20(USDC).transfer(recipient, amount0)
-    WrappedEth(WETH).withdraw(amount1)
-    send(recipient, amount1)
+    if amount0 > 0:
+        ERC20(USDC).transfer(recipient, amount0)
+    if amount1 > 0:
+        WrappedEth(WETH).withdraw(amount1)
+        send(recipient, amount1)
     log Withdrawn(tokenId, msg.sender, recipient, amount0, amount1)
 
 @external
@@ -176,3 +178,7 @@ def multiple_cancel(tokenIds: DynArray[uint256, MAX_SIZE]):
         assert deposit.depositor == msg.sender or deposit.deadline < block.timestamp
         self._withdraw(tokenId, deposit.depositor, deposit.liquidity)
 
+@external
+@payable
+def __default__():
+    assert msg.sender == WETH
