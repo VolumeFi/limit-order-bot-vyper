@@ -13,7 +13,9 @@ def test_deposit(LOBContract, accounts, project):
     lower_tick = upper_tick - 100
     lower_sqrt_price_x96 = tick2sqrtpricex96(lower_tick)
     deadline = 9999999999
-    receipt = LOBContract.deposit(lower_tick, lower_sqrt_price_x96, upper_tick, deadline, sender=accounts[0], value=10**17)
+    weth.deposit(sender=accounts[0], value=10**17)
+    weth.approve(LOBContract.address, 10**17, sender=accounts[0])
+    receipt = LOBContract.deposit(accounts[0], 10**17, lower_tick, lower_sqrt_price_x96, upper_tick, deadline, sender=accounts[0])
     token_id = 0
     for log in LOBContract.Deposited.from_receipt(receipt):
         token_id = log.token_id
@@ -21,6 +23,8 @@ def test_deposit(LOBContract, accounts, project):
     with ape.reverts():
         LOBContract.cancel(token_id, sender=accounts[1])
     deadline = 0
+    weth.deposit(sender=accounts[0], value=10**17)
+    weth.approve(LOBContract.address, 10**17, sender=accounts[0])
     receipt = LOBContract.deposit(lower_tick, lower_sqrt_price_x96, upper_tick, deadline, sender=accounts[0], value=10**17)
     for log in LOBContract.Deposited.from_receipt(receipt):
         token_id = log.token_id

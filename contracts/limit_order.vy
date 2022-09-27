@@ -34,10 +34,10 @@ struct CollectParams:
 
 interface ERC20:
     def transfer(_to: address, _value: uint256) -> bool: nonpayable
+    def transferFrom(_from: address, _to: address, _value: uint256) -> bool: nonpayable
     def approve(_spender: address, _value: uint256) -> bool: nonpayable
 
 interface WrappedEth:
-    def deposit(): payable
     def withdraw(amount: uint256): nonpayable
 
 interface NonfungiblePositionManager:
@@ -71,13 +71,19 @@ event Withdrawn:
     amount1: uint256
 
 depositors: public(HashMap[uint256, Deposit])
+compass_evm: public(address)
+admin: public(address)
 
 @external
-@payable
-def deposit(lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24, deadline: uint256):
-    assert msg.value > 0, "Zero Value"
-    WrappedEth(WETH).deposit(value=msg.value)
-    ERC20(WETH).approve(NONFUNGIBLE_POSITION_MANAGER, msg.value)
+def __init__(_compass_evm: address):
+    self.compass_evm = _compass_evm
+    self.admin = msg.sender
+
+@external
+def deposit(depositor: address, amount: uint256, lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24, deadline: uint256):
+    assert msg.sender == self.compass_evm
+    ERC20(WETH).transferFrom(depositor, self, amount)
+    ERC20(WETH).approve(NONFUNGIBLE_POSITION_MANAGER, amount)
     tokenId: uint256 = 0
     liquidity: uint128 = 0
     amount0: uint256 = 0
@@ -89,7 +95,7 @@ def deposit(lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24,
         tickLower: lower_tick,
         tickUpper: upper_tick,
         amount0Desired: 0,
-        amount1Desired: msg.value,
+        amount1Desired: amount,
         amount0Min: 0,
         amount1Min: 1,
         recipient: self,
@@ -101,7 +107,7 @@ def deposit(lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24,
         depositor: msg.sender,
         deadline: deadline
     })
-    log Deposited(tokenId, msg.sender, msg.value, lower_tick, upper_tick, lower_sqrt_price_x96, deadline)
+    log Deposited(tokenId, msg.sender, amount, lower_tick, upper_tick, lower_sqrt_price_x96, deadline)
 
 @internal
 def _withdraw(tokenId: uint256, recipient: address, liquidity: uint128):
@@ -177,6 +183,16 @@ def multiple_cancel(tokenIds: DynArray[uint256, MAX_SIZE]):
         deposit: Deposit = self.depositors[tokenId]
         assert deposit.depositor == msg.sender or deposit.deadline < block.timestamp
         self._withdraw(tokenId, deposit.depositor, deposit.liquidity)
+
+@external
+def update_admin(new_admin: address):
+    assert msg.sender == self.admin
+    self.admin = new_admin
+
+@external
+def update_compass_evm(new_compass_evm: address):
+    assert msg.sender == self.admin
+    self.compass_evm = new_compass_evm
 
 @external
 @payable
