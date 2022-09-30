@@ -1,4 +1,4 @@
-# @version 0.3.6
+# @version 0.3.7
 
 struct Deposit:
     lower_tick: int24
@@ -50,6 +50,7 @@ NONFUNGIBLE_POSITION_MANAGER: constant(address) = 0xC36442b4a4522E871399CD717aBD
 USDC: constant(address) = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 # USDC
 WETH: constant(address) = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 # WETH
 FEE_LEVEL: constant(uint24) = 500
+TICK_SPACING: constant(int24) = 10
 POOL: constant(address) = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 # USDC-WETH-500
 MAX_SIZE: constant(uint256) = 127
 ERROR: constant(int24) = 100 # 1%
@@ -80,8 +81,16 @@ def __init__(_compass_evm: address):
     self.admin = msg.sender
 
 @external
-def deposit(depositor: address, amount: uint256, lower_tick: int24, lower_sqrt_price_x96: uint256, upper_tick: int24, deadline: uint256):
+def deposit(depositor: address, amount: uint256, lower_tick: int24, lower_sqrt_price_x96: uint256, deadline: uint256):
     assert msg.sender == self.compass_evm
+    response_64: Bytes[64] = raw_call(
+        POOL,
+        method_id("slot0()"),
+        max_outsize = 64,
+        is_static_call = True
+    )
+    upper_tick: int24 = (convert(slice(response_64, 32, 32), int24) - 1) / TICK_SPACING * TICK_SPACING
+    assert lower_tick % TICK_SPACING == 0 and lower_tick < upper_tick , "Wrong Tick"
     ERC20(WETH).transferFrom(depositor, self, amount)
     ERC20(WETH).approve(NONFUNGIBLE_POSITION_MANAGER, amount)
     tokenId: uint256 = 0
