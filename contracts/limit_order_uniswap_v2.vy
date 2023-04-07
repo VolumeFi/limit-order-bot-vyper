@@ -5,15 +5,26 @@ struct Deposit:
     token1: address
     amount0: uint256
     amount1: uint256
+    pool: address
     depositor: address
+
+interface ERC20:
+    def balanceOf(_owner: address) -> uint256: view
 
 interface WrappedEth:
     def deposit(): payable
     def withdraw(amount: uint256): nonpayable
 
+interface UniswapV2Factory:
+    def getPair(tokenA: address, tokenB: address) -> address: view
+
 interface UniswapV2Router:
+    def factory() -> address: view
     def swapExactTokensForTokens(amountIn: uint256, amountOutMin: uint256, path: DynArray[address, 2], to: address, deadline: uint256) -> DynArray[uint256, 2]: nonpayable
     def swapExactTokensForETH(amountIn: uint256, amountOutMin: uint256, path: DynArray[address, 2], to: address, deadline: uint256) -> DynArray[uint256, 2]: nonpayable
+
+interface UniswapV2Pair:
+    def token0() -> address: view
 
 event Deposited:
     deposit_id: uint256
@@ -30,20 +41,26 @@ event Withdrawn:
     deposit_id: uint256
     out_amount: uint256
 
+event Ignored:
+    deposit_id: uint256
+
 WETH: constant(address) = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 # WETH
 VETH: constant(address) = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE # Virtual ETH
-MAX_SIZE: constant(uint256) = 127
+MAX_SIZE: constant(uint256) = 16
 ROUTER: immutable(address)
+FACTORY: immutable(address)
 compass: public(address)
 admin: public(address)
 deposit_size: public(uint256)
 deposits: public(HashMap[uint256, Deposit])
+ignores: public(HashMap[uint256, bool])
 
 @external
 def __init__(_compass: address, router: address):
     self.compass = _compass
     self.admin = msg.sender
     ROUTER = router
+    FACTORY = UniswapV2Router(ROUTER).factory()
 
 @internal
 def _safe_approve(_token: address, _to: address, _value: uint256):
@@ -84,13 +101,16 @@ def deposit(token0: address, token1: address, amount0: uint256, amount1: uint256
             send(msg.sender, msg.value - amount0)
         WrappedEth(WETH).deposit(value=amount0)
     else:
+        orig_balance: uint256 = ERC20(token0).balanceOf(self)
         self._safe_transfer_from(token0, msg.sender, self, amount0)
+        assert ERC20(token0).balanceOf(self) == orig_balance + amount0
     deposit_id: uint256 = self.deposit_size
     self.deposits[deposit_id] = Deposit({
         token0: token0,
         token1: token1,
         amount0: amount0,
         amount1: amount1,
+        pool: UniswapV2Factory(FACTORY).getPair(token0, token1),
         depositor: msg.sender
     })
     self.deposit_size = deposit_id + 1
@@ -105,6 +125,7 @@ def cancel(deposit_id: uint256):
         token1: empty(address),
         amount0: 0,
         amount1: 0,
+        pool: empty(address),
         depositor: empty(address)
     })
     if deposit.token0 == VETH:
@@ -122,6 +143,7 @@ def _withdraw(deposit_id: uint256):
         token1: empty(address),
         amount0: 0,
         amount1: 0,
+        pool: empty(address),
         depositor: empty(address)
     })
     assert deposit.amount0 > 0
@@ -146,6 +168,45 @@ def multiple_withdraw(deposit_ids: DynArray[uint256, MAX_SIZE]):
     assert msg.sender == self.compass
     for deposit_id in deposit_ids:
         self._withdraw(deposit_id)
+
+@external
+@view
+def withdrawable_ids() -> DynArray[uint256, MAX_SIZE]:
+    ids: DynArray[uint256, MAX_SIZE] = []
+    _max_id: uint256 = self.deposit_size - 1
+    for i in range(1000000):
+        if i > _max_id:
+            break
+        _deposit_id: uint256 = _max_id - i
+        if self.ignores[_deposit_id]:
+            continue
+        _deposit: Deposit = self.deposits[_deposit_id]
+        if _deposit.amount0 == 0:
+            continue
+        _response: Bytes[64] = raw_call(
+            _deposit.pool,
+            method_id("getReserves()"),
+            is_static_call=True,
+            max_outsize=64
+        )
+        reserve0: uint256 = convert(slice(_response, 0, 32), uint256)
+        reserve1: uint256 = convert(slice(_response, 32, 32), uint256)
+        token0: address = UniswapV2Pair(_deposit.pool).token0()
+        if _deposit.token0 == token0 or (token0 == WETH and _deposit.token0 == VETH):
+            if _deposit.amount0 * reserve1 * 99 > _deposit.amount1 * reserve0 * 100:
+                ids.append(_deposit_id)
+        else:
+            if _deposit.amount0 * reserve0 * 99 > _deposit.amount1 * reserve1 * 100:
+                ids.append(_deposit_id)
+        if len(ids) >= MAX_SIZE:
+            break
+    return ids
+
+@external
+def ignore_deposit(deposit_id: uint256):
+    assert msg.sender == self.admin
+    self.ignores[deposit_id] = True
+    log Ignored(deposit_id)
 
 @external
 def update_admin(new_admin: address):
